@@ -1,52 +1,54 @@
 #include <cstdint>
-#include <fstream>
 #include <iostream>
+#include <fstream>
 
-struct VAW_HEADER {
+struct WavHeader {
 	// Master RIFF chunk
-	std::uint8_t ChunkID[4] = {'R', 'I', 'F', 'F'};
-	std::uint32_t ChunkSize; // Overall file size minus 8 bytes
-	std::uint8_t Format[4] = {'W', 'A', 'V', 'E'};
+	uint8_t ChunkID[4] = {'R', 'I', 'F', 'F'};
+	uint32_t ChunkSizeBytes; // Overall file size minus 8 bytes
+	uint8_t Format[4] = {'W', 'A', 'V', 'E'};
 	// Chunk describing the data format
-	std::uint8_t Subchunk1ID[4] = {'f', 'm', 't', ' '};
-	std::uint32_t Subchunk1Size = 16; // Chunk size minus 8 bytes, which is 16 bytes here
-	std::uint16_t AudioFormat = 1; // Audio format 1=PCM,6=mulaw,7=alaw,     257=IBM
+	uint8_t Subchunk1ID[4] = {'f', 'm', 't', ' '};
+	uint32_t Subchunk1Size = 16; // Chunk size minus 8 bytes, which is 16 bytes here
+	uint16_t AudioFormat = 1; // Audio format 1=PCM,6=mulaw,7=alaw,     257=IBM
 								   // Mu-Law, 258=IBM A-Law, 259=ADPCM
-	std::uint16_t NumChannels = 1; // Number of channels 1=Mono 2=Sterio
-	std::uint32_t SampleRate = 44100; // Sampling Frequency in Hz
-	std::uint32_t ByteRate = 44100 * 2; // Number of bytes to read per second (Frequency * BytePerBloc).
-	std::uint16_t BlockAlign = 2; // 2=16-bit mono, 4=16-bit stereo
+	uint16_t NumChannels = 1; // Number of channels 1=Mono 2=Sterio
+	uint32_t SampleRateHZ = 44100; // Sampling Frequency in Hz
+	uint32_t BytesPerSecond = 44100 * 2; // Number of bytes to read per second (Frequency * BytePerBloc).
+	uint16_t BlockAlign = 2; // 2=16-bit mono, 4=16-bit stereo
 								  // Number of bytes per block (NbrChannels * BitsPerSample / 8).
-	std::uint16_t BitsPerSample = 16; // Number of bits per sample
+	uint16_t BitsPerSample = 16; // Number of bits per sample
 	// Chunk containing the sampled data
-	std::uint8_t DataBlocID[4] = {'d', 'a', 't', 'a'};
-	std::uint32_t DataSize; // Sampling Frequency in Hz
+	uint8_t DataBlocID[4] = {'d', 'a', 't', 'a'};
+	uint32_t DataSizeBytes;
 };
 
+const unsigned short frequency_hz = 440;
+// const uint16_t amplitude = 65535; // max value
+const uint16_t amplitude = 10000;
+const float duration_seconds = 3.0;
+
 int main() {
-	VAW_HEADER vaw_header;
-	const std::uint32_t sample_rate = vaw_header.SampleRate;
+	std::ofstream ofs("test.wav", std::ios::out | std::ios::binary);
 
-	const unsigned short frequency_hz = 50;
-	const float amplitude = 1000; // from 0 to 1
-	const float duration_seconds = 5.0;
-	const float time_increment = 1/static_cast<float>(sample_rate);
+	WavHeader wav_header;
+	wav_header.DataSizeBytes = wav_header.BytesPerSecond * duration_seconds;
+	wav_header.ChunkSizeBytes = sizeof(WavHeader) + wav_header.DataSizeBytes - 8;
 
-	std::uint32_t sample_chunk_size_bytes = sample_rate * duration_seconds;
-	std::uint32_t file_size_bytes = sizeof(VAW_HEADER) + sample_chunk_size_bytes;
-	vaw_header.DataSize = sample_chunk_size_bytes;
-	vaw_header.ChunkSize = file_size_bytes + sizeof(VAW_HEADER) - 8;
+	ofs.write(reinterpret_cast<const char*>(&wav_header), sizeof(WavHeader));
 
-	std::ofstream fs("test.wav", std::ios::out | std::ios::binary);
-	fs.write(reinterpret_cast<const char*>(&vaw_header), sizeof vaw_header);
+	float cur_arg = 0.0;
+	size_t bytes_written = 0;
+	const float arg_increment = 2.0 * M_PI * frequency_hz / static_cast<float>(wav_header.SampleRateHZ);
 
-	for (float cur_time = 0; cur_time < duration_seconds; cur_time += time_increment) {
-		std::uint16_t sample = static_cast<std::uint16_t>(
-				amplitude * sin(2 * M_PI * frequency_hz * cur_time));
-		fs.write(reinterpret_cast<const char*>(&sample), sizeof(std::uint16_t));
+	while (bytes_written < wav_header.DataSizeBytes) {
+		uint16_t sample = static_cast<std::uint16_t>(amplitude * sin(cur_arg));
+		ofs.write(reinterpret_cast<const char*>(&sample), 2);
+		cur_arg += 2.0 * M_PI * frequency_hz / static_cast<float>(wav_header.SampleRateHZ);
+		bytes_written += 2;
 	}
 
-	fs.close();
+	ofs.close();
 
 	return 0;
 }
